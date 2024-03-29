@@ -292,8 +292,8 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True):
     # t_list[i,j] and r_list[i,j] are transmission and reflection amplitudes,
     # respectively, coming from i, going to j. Only need to calculate this when
     # j=i+1. (2D array is overkill but helps avoid confusion.)
-    t_list = np.zeros((num_wl, num_layers, num_layers), dtype=complex)
-    r_list = np.zeros((num_wl, num_layers, num_layers), dtype=complex)
+    t_list = np.zeros((num_wl, num_layers), dtype=complex)
+    r_list = np.zeros((num_wl, num_layers), dtype=complex)
 
     if pol == 's':
         t_list[:,:-1] = np.transpose((2 * n_list[:-1] * cos_th_list[:-1]) /
