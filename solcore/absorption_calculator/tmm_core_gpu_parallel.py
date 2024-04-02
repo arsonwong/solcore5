@@ -18,20 +18,20 @@ import cmath
 EPSILON = sys.float_info.epsilon  # typical floating-point calculation error
 
 
-def list_snell(d_n_list, th_0, lam_vac, d_list, d_th_list, d_cos_th_list, d_delta, threadsperblock, catch_error):
+def list_snell(d_n_list, d_th_0, lam_vac, d_list, d_th_list, d_cos_th_list, d_delta, threadsperblock, catch_error):
     d_kz_list = cuda.device_array((d_n_list.shape[0],d_n_list.shape[1]), dtype=complex)
     succeed = False
     if catch_error:
         for _ in range(4):
             try:
                 blockspergrid = math.ceil(d_n_list.shape[0]*d_n_list.shape[1] / threadsperblock)
-                list_snell_kernel_function[blockspergrid, threadsperblock](d_n_list, th_0, lam_vac, d_list, d_th_list, d_cos_th_list, d_kz_list, d_delta)
+                list_snell_kernel_function[blockspergrid, threadsperblock](d_n_list, d_th_0, lam_vac, d_list, d_th_list, d_cos_th_list, d_kz_list, d_delta)
                 succeed = True
             except cuda.cudadrv.driver.CudaAPIError as e:
                 threadsperblock //= 2
     else:
         blockspergrid = math.ceil(d_n_list.shape[0]*d_n_list.shape[1] / threadsperblock)
-        list_snell_kernel_function[blockspergrid, threadsperblock](d_n_list, th_0, lam_vac, d_list, d_th_list, d_cos_th_list, d_kz_list, d_delta)
+        list_snell_kernel_function[blockspergrid, threadsperblock](d_n_list, d_th_0, lam_vac, d_list, d_th_list, d_cos_th_list, d_kz_list, d_delta)
         succeed = True
 
     th_list = d_th_list.copy_to_host()
@@ -46,7 +46,7 @@ def list_snell_kernel_function(n_list, th_0, lam_vac, d_list, th_list, cos_th_li
     if pos < num_of_layers*num_of_rows:
         pos1 = int(pos/num_of_layers)
         pos0 = pos - pos1*num_of_layers
-        th_list[pos0,pos1] = np.arcsin(n_list[0,pos1] * np.sin(th_0) / n_list[pos0,pos1])
+        th_list[pos0,pos1] = np.arcsin(n_list[0,pos1] * np.sin(th_0[pos0]) / n_list[pos0,pos1])
         cos_th_list[pos0,pos1] = np.cos(th_list[pos0,pos1])
         kz_list[pos0,pos1] = 2 * np.pi * n_list[pos0,pos1] * cos_th_list[pos0,pos1] / lam_vac[pos1]
         delta[pos0,pos1] = kz_list[pos0,pos1] * d_list[pos0,0]
@@ -309,17 +309,16 @@ class Coh_tmm_GPU:
         n_list = np.array(n_list)
         d_list = np.array(d_list, dtype=float)[:, None]
 
+        if not hasattr(th_0, 'size'):
+            th_0 = th_0*np.ones((n_list.shape[1]))
+
         # input tests
-        if hasattr(th_0, 'size') and th_0.size > 1 and th_0.size != lam_vac.size:
-            raise ValueError('This function is not vectorized for angles; you need to run one angle calculation at a time.')
         if n_list.shape[0] != d_list.shape[0]:
             raise ValueError("Problem with n_list or d_list!")
         if (d_list[0] != np.inf) or (d_list[-1] != np.inf):
             raise ValueError('d_list must start and end with inf!')
         if any(abs((n_list[0] * np.sin(th_0)).imag) > 100 * EPSILON):
             raise ValueError('Error in n0 or th0!')
-        if hasattr(th_0, 'size'):
-            th_0 = np.array(th_0)
         num_layers = n_list.shape[0]
         num_wl = n_list.shape[1]
 
@@ -327,13 +326,14 @@ class Coh_tmm_GPU:
         # through the layer. Computed with Snell's law. Note that the "angles" may be
         # complex!
         d_n_list = cuda.to_device(n_list)
+        d_th_0 = cuda.to_device(th_0)
         d_th_list = cuda.device_array((n_list.shape[0],n_list.shape[1]), dtype=complex)
         d_cos_th_list = cuda.device_array((n_list.shape[0],n_list.shape[1]), dtype=complex)
         d_delta = cuda.device_array((n_list.shape[0],n_list.shape[1]), dtype=complex)
         d_list[0] = 0.0
         d_list[-1] = 0.0
         d_list = d_list.astype(complex)
-        th_list, kz_list, threadsperblock, success = list_snell(d_n_list, th_0, lam_vac, d_list, d_th_list, d_cos_th_list, d_delta, self.threadsperblock[0], self.catch_error)
+        th_list, kz_list, threadsperblock, success = list_snell(d_n_list, d_th_0, lam_vac, d_list, d_th_list, d_cos_th_list, d_delta, self.threadsperblock[0], self.catch_error)
         self.threadsperblock[0] = threadsperblock
 
         olderr = np.seterr(invalid='ignore')

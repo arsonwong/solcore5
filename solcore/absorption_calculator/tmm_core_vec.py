@@ -251,8 +251,6 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True):
     d_list = np.array(d_list, dtype=float)[:, None]
 
     # input tests
-    if hasattr(th_0, 'size') and th_0.size > 1 and th_0.size != lam_vac.size:
-        raise ValueError('This function is not vectorized for angles; you need to run one angle calculation at a time.')
     if n_list.shape[0] != d_list.shape[0]:
         raise ValueError("Problem with n_list or d_list!")
     if (d_list[0] != np.inf) or (d_list[-1] != np.inf):

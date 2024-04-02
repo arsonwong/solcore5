@@ -176,14 +176,12 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True):
     d_list = d_list.astype(complex)
 
     # input tests
-    # if hasattr(th_0, 'size') and th_0.size > 1 and th_0.size != lam_vac.size:
-    #     raise ValueError('This function is not vectorized for angles; you need to run one angle calculation at a time.')
-    # if n_list.shape[0] != d_list.shape[0]:
-    #     raise ValueError("Problem with n_list or d_list!")
-    # if (d_list[0] != np.inf) or (d_list[-1] != np.inf):
-    #     raise ValueError('d_list must start and end with inf!')
-    # if any(abs((n_list[0] * np.sin(th_0)).imag) > 100 * EPSILON):
-    #     raise ValueError('Error in n0 or th0!')
+    if n_list.shape[0] != d_list.shape[0]:
+        raise ValueError("Problem with n_list or d_list!")
+    if (d_list[0] != np.inf) or (d_list[-1] != np.inf):
+        raise ValueError('d_list must start and end with inf!')
+    if any(abs((n_list[0] * np.sin(th_0)).imag) > 100 * EPSILON):
+        raise ValueError('Error in n0 or th0!')
     if hasattr(th_0, 'size'):
         th_0 = np.array(th_0)
     num_layers = n_list.shape[0]
