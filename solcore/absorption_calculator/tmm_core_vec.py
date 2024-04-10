@@ -204,7 +204,7 @@ def interface_T(polarization, n_i, n_f, th_i, th_f):
 # 2024-03-23: JW - modified to run at faster speed, execution time roughly 57% of original
 # if further set detailed = False, this function will skip calculations of power_entering 
 # and vw_list, and the function will be faster still, execution time roughly 80% x 57% = 45% of original
-def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True):
+def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True, width_differentials=None):
     """
     This function is vectorized.
     Main "coherent transfer matrix method" calc. Given parameters of a stack,
@@ -262,6 +262,8 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True):
     num_layers = n_list.shape[0]
     num_wl = n_list.shape[1]
 
+    d_list_truncated = d_list[1:-1]        
+
     # th_list is a list with, for each layer, the angle that the light travels
     # through the layer. Computed with Snell's law. Note that the "angles" may be
     # complex!
@@ -272,11 +274,21 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True):
     # kz is the z-component of (complex) angular wavevector for forward-moving
     # wave. Positive imaginary part means decaying.
     kz_list = 2 * np.pi * n_list * cos_th_list / lam_vac
+    kz_list_truncated = kz_list[1:-1,:]
+    width_differentials_num = 0
+    if width_differentials is not None:
+        kz_original = np.copy(kz_list_truncated)
+        for i, d in enumerate(width_differentials):
+            if d is not None:
+                width_differentials_num += 1
+                ratio = 1.0 + d*1e9/d_list_truncated[i]
+                kz_list_truncated = np.hstack((kz_list_truncated,ratio*kz_original))
 
     # delta is the total phase accrued by traveling through a given layer.
     # ignore warning about inf multiplication
     olderr = np.seterr(invalid='ignore')
-    delta = kz_list * d_list
+    delta = kz_list_truncated * d_list_truncated
+
     np.seterr(**olderr)
 
     # For a very opaque layer, reset delta to avoid divide-by-0 and similar
@@ -284,8 +296,8 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True):
     # transmission < 1e-30 --- small enough that the exact value doesn't
     # matter.
     # It DOES matter (for depth-dependent calculations!)
-    delta[1:num_layers - 1, :] = np.where(delta[1:num_layers - 1, :].imag > 100, delta[1:num_layers - 1, :].real + 100j,
-                                          delta[1:num_layers - 1, :])
+    delta = np.where(delta.imag > 100, delta.real + 100j,
+                                          delta)
 
     # t_list[i,j] and r_list[i,j] are transmission and reflection amplitudes,
     # respectively, coming from i, going to j. Only need to calculate this when
@@ -313,19 +325,25 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True):
     # M_list[n]. M_0 and M_{num_layers-1} are not defined.
     # My M is a bit different than Sernelius's, but Mtilde is the same.
 
-    M_list = np.zeros((num_layers, num_wl, 2, 2), dtype=complex)
+    t_list = np.tile(t_list, (width_differentials_num+1, 1))
+    r_list = np.tile(r_list, (width_differentials_num+1, 1))
+    n_list = np.tile(n_list, (1,width_differentials_num+1))
+    cos_th_0 = np.tile(cos_th_0,(width_differentials_num+1))
+    cos_th_list = np.tile(cos_th_list,(1, width_differentials_num+1))
+
+    M_list = np.zeros((num_layers, num_wl*(width_differentials_num+1), 2, 2), dtype=complex)
     for i in range(0, num_layers - 1):
         exp_ = 1.0
         if i > 0:
-            exp_ = np.exp(-1j * delta[i])
+            exp_ = np.exp(-1j * delta[i-1])
         d = (1 / t_list[:, i])
         M_list[i,:,0,0] = exp_*d
         M_list[i,:,0,1] = exp_*d*r_list[:, i]
         M_list[i,:,1,0] = d/exp_*r_list[:, i]
         M_list[i,:,1,1] = d/exp_
 
-    Mtilde = make_2x2_array(np.ones_like(delta[i]), np.zeros_like(delta[i]), np.zeros_like(delta[i]),
-                            np.ones_like(delta[i]), dtype=complex)
+    Mtilde = make_2x2_array(np.ones((t_list.shape[0])), np.zeros((t_list.shape[0])), np.zeros((t_list.shape[0])),
+                            np.ones((t_list.shape[0])), dtype=complex)
     for i in range(0, num_layers - 1):
         Mtilde = np.einsum('ijk,ikl->ijl', Mtilde, M_list[i])
 
@@ -333,12 +351,12 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True):
     r = Mtilde[:, 1, 0] / Mtilde[:, 0, 0]
     t = np.ones_like(Mtilde[:, 0, 0]) / Mtilde[:, 0, 0]
 
-    vw_list = []
+    vw_list = None
     if detailed:
         # vw_list[n] = [v_n, w_n]. v_0 and w_0 are undefined because the 0th medium
         # has no left interface.
-        vw_list = np.zeros((num_layers, num_wl, 2), dtype=complex)
-        vw = np.zeros((num_wl, 2, 2), dtype=complex)
+        vw_list = np.zeros((num_layers, num_wl*(width_differentials_num+1), 2), dtype=complex)
+        vw = np.zeros((num_wl*(width_differentials_num+1), 2, 2), dtype=complex)
         I = np.identity(2)
         vw[:, 0, 0] = t
         vw[:, 0, 1] = t
@@ -353,9 +371,7 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True):
     R = R_from_r(r)
     T = T_from_t(pol, t, n_list[0], n_list[-1], cos_th_0, cos_th_list[-1])
 
-    power_entering = []
-    if detailed:
-        power_entering = power_entering_from_r(
+    power_entering = power_entering_from_r(
             pol, r, n_list[0], cos_th_0)
 
     return {'r': r, 't': t, 'R': R, 'T': T, 'power_entering': power_entering,
@@ -638,13 +654,13 @@ def absorp_in_each_layer(coh_tmm_data):
     """
     num_layers = len(coh_tmm_data['d_list'])
     num_lam_vec = len(coh_tmm_data['lam_vac'])
-    power_entering_each_layer = np.zeros((num_layers, num_lam_vec))
+    power_entering_each_layer = np.zeros((num_layers, coh_tmm_data['power_entering'].shape[0]))
     power_entering_each_layer[0] = 1
     power_entering_each_layer[1] = coh_tmm_data['power_entering']
     power_entering_each_layer[-1] = coh_tmm_data['T']
     for i in range(2, num_layers - 1):
         power_entering_each_layer[i] = position_resolved(i, 0, coh_tmm_data)['poyn']
-    final_answer = np.zeros((num_layers, num_lam_vec))
+    final_answer = np.zeros((num_layers, coh_tmm_data['power_entering'].shape[0]))
     final_answer[0:-1] = -np.diff(power_entering_each_layer, axis=0)
     final_answer[-1] = power_entering_each_layer[-1]
 
