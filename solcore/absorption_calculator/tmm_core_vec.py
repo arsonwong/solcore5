@@ -204,7 +204,7 @@ def interface_T(polarization, n_i, n_f, th_i, th_f):
 # 2024-03-23: JW - modified to run at faster speed, execution time roughly 57% of original
 # if further set detailed = False, this function will skip calculations of power_entering 
 # and vw_list, and the function will be faster still, execution time roughly 80% x 57% = 45% of original
-def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True, width_differentials=None):
+def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True, width_differentials=None, n_list_diff=None):
     """
     This function is vectorized.
     Main "coherent transfer matrix method" calc. Given parameters of a stack,
@@ -276,6 +276,7 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True, width_differentia
     kz_list = 2 * np.pi * n_list * cos_th_list / lam_vac
     kz_list_truncated = kz_list[1:-1,:]
     width_differentials_num = 0
+    nk_differentials_num = 0
     if width_differentials is not None:
         kz_original = np.copy(kz_list_truncated)
         for i, d in enumerate(width_differentials):
@@ -283,6 +284,14 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True, width_differentia
                 width_differentials_num += 1
                 ratio = 1.0 + d*1e9/d_list_truncated[i]
                 kz_list_truncated = np.hstack((kz_list_truncated,ratio*kz_original))
+    if n_list_diff is not None:
+        for j, entry in enumerate(n_list_diff):
+            if entry is not None:
+                nk_differentials_num += 1
+                n_list2 = np.copy(n_list)
+                n_list2[j] = entry 
+                kz_list = 2 * np.pi * n_list2 * cos_th_list / lam_vac
+                kz_list_truncated = np.hstack((kz_list_truncated,kz_list[1:-1,:]))
 
     # delta is the total phase accrued by traveling through a given layer.
     # ignore warning about inf multiplication
@@ -325,13 +334,35 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True, width_differentia
     # M_list[n]. M_0 and M_{num_layers-1} are not defined.
     # My M is a bit different than Sernelius's, but Mtilde is the same.
 
-    t_list = np.tile(t_list, (width_differentials_num+1, 1))
-    r_list = np.tile(r_list, (width_differentials_num+1, 1))
-    n_list = np.tile(n_list, (1,width_differentials_num+1))
-    cos_th_0 = np.tile(cos_th_0,(width_differentials_num+1))
-    cos_th_list = np.tile(cos_th_list,(1, width_differentials_num+1))
+    t_list = np.tile(t_list, (width_differentials_num+nk_differentials_num+1, 1))
+    r_list = np.tile(r_list, (width_differentials_num+nk_differentials_num+1, 1))
+    n_list_ = np.copy(n_list)
+    n_list = np.tile(n_list, (1,width_differentials_num+nk_differentials_num+1))
+    if n_list_diff is not None:
+        count = 0
+        for j, entry in enumerate(n_list_diff):
+            if entry is not None:
+                n_list2 = np.copy(n_list_)
+                n_list2[j] = entry 
+                start_ = num_wl*(width_differentials_num+1+count)
+                end_ = num_wl*(width_differentials_num+1+count+1)
+                n_list[:,start_:end_] = n_list2
+                if pol == 's':
+                    t_list[start_:end_,:-1] = np.transpose((2 * n_list2[:-1] * cos_th_list[:-1]) /
+                            (n_list2[:-1] * cos_th_list[:-1] + n_list2[1:] * cos_th_list[1:]))
+                    r_list[start_:end_,:-1] = np.transpose((n_list2[:-1] * cos_th_list[:-1] - n_list2[1:] * cos_th_list[1:]) /
+                            (n_list2[:-1] * cos_th_list[:-1] + n_list2[1:] * cos_th_list[1:]))
+                elif pol == 'p':
+                    t_list[start_:end_,:-1] = np.transpose((2 * n_list2[:-1] * cos_th_list[:-1]) /
+                            (n_list2[1:] * cos_th_list[:-1] + n_list2[:-1] * cos_th_list[1:]))
+                    r_list[start_:end_,:-1] = np.transpose((n_list2[1:] * cos_th_list[:-1] - n_list2[:-1] * cos_th_list[1:]) /
+                            (n_list2[1:] * cos_th_list[:-1] + n_list2[:-1] * cos_th_list[1:]))
+                count += 1
 
-    M_list = np.zeros((num_layers, num_wl*(width_differentials_num+1), 2, 2), dtype=complex)
+    cos_th_0 = np.tile(cos_th_0,(width_differentials_num+nk_differentials_num+1))
+    cos_th_list = np.tile(cos_th_list,(1, width_differentials_num+nk_differentials_num+1))
+
+    M_list = np.zeros((num_layers, num_wl*(width_differentials_num+nk_differentials_num+1), 2, 2), dtype=complex)
     for i in range(0, num_layers - 1):
         exp_ = 1.0
         if i > 0:
@@ -355,8 +386,8 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True, width_differentia
     if detailed:
         # vw_list[n] = [v_n, w_n]. v_0 and w_0 are undefined because the 0th medium
         # has no left interface.
-        vw_list = np.zeros((num_layers, num_wl*(width_differentials_num+1), 2), dtype=complex)
-        vw = np.zeros((num_wl*(width_differentials_num+1), 2, 2), dtype=complex)
+        vw_list = np.zeros((num_layers, num_wl*(width_differentials_num+nk_differentials_num+1), 2), dtype=complex)
+        vw = np.zeros((num_wl*(width_differentials_num+nk_differentials_num+1), 2, 2), dtype=complex)
         I = np.identity(2)
         vw[:, 0, 0] = t
         vw[:, 0, 1] = t
