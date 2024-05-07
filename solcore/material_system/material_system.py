@@ -418,11 +418,12 @@ class BaseMaterial:
     def n_interpolated(self, x):
         assert len(self.composition) <= 1, "Can't interpolate 2d spectra yet"
 
-        try:
-            self.load_n_data()
-        except:
-            print('Material "{}" does not have n-data defined. Returning "ones"'.format(self.material_string))
-            return np.ones_like(x)
+        if self.n_data is None:
+            try:
+                self.load_n_data()
+            except:
+                print('Material "{}" does not have n-data defined. Returning "ones"'.format(self.material_string))
+                return np.ones_like(x)
 
         if len(self.composition) == 0:
             if self.nk_parameter is not None:
@@ -453,11 +454,12 @@ class BaseMaterial:
     def k_interpolated(self, x):
         assert len(self.composition) <= 1, "Can't interpolate 2d spectra yet"
 
-        try:
-            self.load_k_data()
-        except:
-            print('Material "{}" does not have k-data defined. Returning "zeros"'.format(self.material_string))
-            return np.zeros_like(x)
+        if self.k_data is None:
+            try:
+                self.load_k_data()
+            except:
+                print('Material "{}" does not have k-data defined. Returning "zeros"'.format(self.material_string))
+                return np.zeros_like(x)
 
         if len(self.composition) == 0:
             if self.nk_parameter is not None:
