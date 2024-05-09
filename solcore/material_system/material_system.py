@@ -418,7 +418,13 @@ class BaseMaterial:
     def n_interpolated(self, x):
         assert len(self.composition) <= 1, "Can't interpolate 2d spectra yet"
 
-        if self.n_data is None:
+        try:
+            if not hasattr(self,'n_data'):
+                self.n_data = None
+        except:
+            self.n_data = None
+
+        if not hasattr(self,'n_data') or self.n_data is None:
             try:
                 self.load_n_data()
             except:
@@ -454,7 +460,13 @@ class BaseMaterial:
     def k_interpolated(self, x):
         assert len(self.composition) <= 1, "Can't interpolate 2d spectra yet"
 
-        if self.k_data is None:
+        try:
+            if not hasattr(self,'k_data'):
+                self.k_data = None
+        except:
+            self.k_data = None
+
+        if not hasattr(self,'k_data') or self.k_data is None:
             try:
                 self.load_k_data()
             except:
