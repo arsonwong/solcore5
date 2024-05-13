@@ -282,8 +282,10 @@ def coh_tmm(pol, n_list, d_list, th_0, lam_vac, detailed=True, width_differentia
         for i, d in enumerate(width_differentials):
             if d is not None:
                 width_differentials_num += 1
+                kz_ = np.copy(kz_original)
                 ratio = 1.0 + d*1e9/d_list_truncated[i]
-                kz_list_truncated = np.hstack((kz_list_truncated,ratio*kz_original))
+                kz_[i,:] *= ratio
+                kz_list_truncated = np.hstack((kz_list_truncated,kz_))
     if n_list_diff is not None:
         for j, entry in enumerate(n_list_diff):
             if entry is not None:
