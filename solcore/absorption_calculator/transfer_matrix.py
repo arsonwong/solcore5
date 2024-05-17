@@ -181,7 +181,13 @@ class OptiStack(object):
                 n0 = 1
 
         for i in range(self.num_layers):
-            out.append(self.n_data[i](wl_m) + self.k_data[i](wl_m) * 1.0j)
+            if self.layers[i].nk_parameter is not None:
+                self.layers[i].material.nk_parameter = self.layers[i].nk_parameter
+                n_ = self.layers[i].material.n_interpolated(wl_m)
+                k_ = self.layers[i].material.k_interpolated(wl_m)
+                out.append(n_ + k_ * 1.0j)
+            else:
+                out.append(self.n_data[i](wl_m) + self.k_data[i](wl_m) * 1.0j)
 
         out_diff = []
         if nk_differentials is not None:
