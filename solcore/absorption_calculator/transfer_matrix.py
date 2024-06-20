@@ -181,7 +181,7 @@ class OptiStack(object):
                 n0 = 1
 
         for i in range(self.num_layers):
-            if self.layers[i].nk_parameter is not None:
+            if hasattr(self.layers[i], 'nk_parameter') and self.layers[i].nk_parameter is not None:
                 self.layers[i].material.nk_parameter = self.layers[i].nk_parameter
                 n_ = self.layers[i].material.n_interpolated(wl_m)
                 k_ = self.layers[i].material.k_interpolated(wl_m)
