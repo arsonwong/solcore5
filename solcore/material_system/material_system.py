@@ -397,7 +397,7 @@ class BaseMaterial:
                     self.k_data = np.loadtxt(self.k_path, unpack=True)
                 except:
                     self.k_data = np.loadtxt(self.k_path, delimiter=',', skiprows=1, encoding='utf-8')
-                    self.k_data = self.k_data[:,[0,3]]
+                    self.k_data = self.k_data[:,[0,-1]]
                     self.k_data[:,0] /= 1.0e9
                     self.k_data = self.k_data.transpose()
             else: # 
@@ -414,6 +414,34 @@ class BaseMaterial:
                 self.nk_parameter = self.nk_parameters[0]
         else:
             self.k_data, self.k_critical_points = critical_point_interpolate.load_data_from_directory(self.k_path)
+
+    @lru_cache(maxsize=1)
+    def load_nk_data(self):
+        if isinstance(self.n_path, str):
+            data_ = np.loadtxt(self.n_path, delimiter=',', skiprows=1, encoding='utf-8')
+            self.n_data = data_[:,[0,1]]
+            self.n_data[:,0] /= 1.0e9
+            self.n_data = self.n_data.transpose()
+            self.k_data = data_[:,[0,3]]
+            self.k_data[:,0] /= 1.0e9
+            self.k_data = self.k_data.transpose()
+        else: # a list
+            self.n_data = []
+            self.k_data = []
+            self.nk_parameters = []
+            for entry in self.n_path:
+                self.nk_parameters.append(entry['parameter'])
+                data_ = np.loadtxt(entry['path'], delimiter=',', skiprows=1, encoding='utf-8')
+                n_data = data_[:,[0,1]]
+                n_data[:,0] /= 1.0e9
+                n_data = n_data.transpose()
+                self.n_data.append(n_data)
+                k_data = data_[:,[0,3]]
+                k_data[:,0] /= 1.0e9
+                k_data = k_data.transpose()
+                self.k_data.append(k_data)
+            self.nk_parameters = np.array(self.nk_parameters)
+            self.nk_parameter = self.nk_parameters[0]
 
     def n_interpolated(self, x):
         assert len(self.composition) <= 1, "Can't interpolate 2d spectra yet"
